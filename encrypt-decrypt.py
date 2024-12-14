@@ -3,7 +3,13 @@ import time
 import unicodedata
 import random
 from PyPDF2 import PdfReader
-from secretpy import ADFGVX, CryptMachine
+from secretpy import (
+    ADFGVX, 
+    ColumnarTransposition, 
+    Zigzag,
+    CryptMachine
+)
+from statistics import mean, stdev
 
 def normalize_char(c):
     """Normalize a single character, converting accented characters to their base form"""
@@ -40,6 +46,49 @@ def generate_polybius_square(init_vector):
     random.shuffle(chars)
     return "".join(chars)
 
+def measure_performance(cipher_name, cm, text, num_runs=30):
+    """Measure encryption and decryption performance"""
+    encrypt_times = []
+    decrypt_times = []
+    encrypted_text = None
+    
+    for _ in range(num_runs):
+        # Measure encryption
+        start_time = time.time()
+        encrypted_text = cm.encrypt(text)
+        encrypt_time = (time.time() - start_time) * 1000
+        encrypt_times.append(encrypt_time)
+        
+        # Measure decryption
+        start_time = time.time()
+        decrypted_text = cm.decrypt(encrypted_text)
+        decrypt_time = (time.time() - start_time) * 1000
+        decrypt_times.append(decrypt_time)
+        
+        # Verify correctness
+        if decrypted_text != text:
+            print(f"\nWarning: {cipher_name} decryption mismatch!")
+    
+    return {
+        'name': cipher_name,
+        'encrypt_avg': mean(encrypt_times),
+        'encrypt_std': stdev(encrypt_times) if len(encrypt_times) > 1 else 0,
+        'decrypt_avg': mean(decrypt_times),
+        'decrypt_std': stdev(decrypt_times) if len(decrypt_times) > 1 else 0,
+        'encrypted_length': len(encrypted_text) if encrypted_text else 0
+    }
+
+def print_performance_results(results):
+    """Print performance comparison results"""
+    print("\n=== Performance Comparison ===")
+    print(f"{'Cipher':<20} {'Encryption (ms)':<25} {'Decryption (ms)':<25} {'Output Length':<15}")
+    print("-" * 85)
+    
+    for result in results:
+        encrypt_stats = f"{result['encrypt_avg']:.2f} ± {result['encrypt_std']:.2f}"
+        decrypt_stats = f"{result['decrypt_avg']:.2f} ± {result['decrypt_std']:.2f}"
+        print(f"{result['name']:<20} {encrypt_stats:<25} {decrypt_stats:<25} {result['encrypted_length']:<15}")
+
 def main():
     if len(sys.argv) != 4:
         print("Usage: python encrypt-decrypt.py <pdf_file> <initialisation_vector> <keyword>")
@@ -50,13 +99,7 @@ def main():
     keyword = sys.argv[3].lower()
 
     try:
-        start_time = time.time()
-
-        cipher = ADFGVX()
-        cm = CryptMachine(cipher)
-        cm.set_key(keyword)
-        cm.set_alphabet(generate_polybius_square(init_vector))
-
+        # Read and normalize input text
         reader = PdfReader(pdf_file)
         extracted_text = ""
         for page in reader.pages:
@@ -66,20 +109,26 @@ def main():
         normalised_text = normalise_text(extracted_text)
         analyze_text_differences(normalised_text, "Normalized Text")
 
-        encrypted_text = cm.encrypt(normalised_text)
-        analyze_text_differences(encrypted_text, "Encrypted Text")
+        # Initialize ciphers with their required key types
+        ciphers = [
+            ('ADFGVX', ADFGVX(), generate_polybius_square(init_vector), keyword),
+            ('Columnar', ColumnarTransposition(), None, keyword),
+            ('Railfence', Zigzag(), None, 3)  # Using fixed rail count of 3
+        ]
 
-        decrypted_text = cm.decrypt(encrypted_text)
-        analyze_text_differences(decrypted_text, "Decrypted Text")
+        # Measure performance for each cipher
+        results = []
+        for name, cipher, alphabet, key in ciphers:
+            cm = CryptMachine(cipher)
+            cm.set_key(key)
+            if alphabet:
+                cm.set_alphabet(alphabet)
+            
+            result = measure_performance(name, cm, normalised_text)
+            results.append(result)
 
-        if normalised_text == decrypted_text:
-            print("\nComparison: Decrypted text matches the original text.")
-        else:
-            print("\nComparison: Decrypted text does NOT match the original text.")
-
-        end_time = time.time()
-        elapsed_time_ms = (end_time - start_time) * 1000
-        print(f"\nExecution time: {elapsed_time_ms:.2f} ms")
+        # Print performance comparison
+        print_performance_results(results)
 
     except Exception as e:
         print(f"An error occurred: {e}")
