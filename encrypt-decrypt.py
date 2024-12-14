@@ -1,80 +1,13 @@
 import sys
-import random
 import time
 import unicodedata
+import random
 from PyPDF2 import PdfReader
-
-class CustomADFGVX:
-    def __init__(self, key, keyword):
-        self.chars = 'ADFGVX'
-        self.key = key
-        self.keyword = keyword.upper()
-        
-    def get_coordinates(self, char):
-        pos = self.key.find(char)
-        if pos == -1:
-            return None
-        return (pos // 6, pos % 6)
-        
-    def get_char(self, row, col):
-        return self.key[row * 6 + col]
-        
-    def encrypt(self, text):
-        # First substitution
-        intermediate = ''
-        for char in text:
-            coords = self.get_coordinates(char)
-            if coords:
-                intermediate += self.chars[coords[0]] + self.chars[coords[1]]
-            
-        # Columnar transposition
-        columns = [''] * len(self.keyword)
-        col_index = 0
-        for char in intermediate:
-            columns[col_index] += char
-            col_index = (col_index + 1) % len(self.keyword)
-            
-        # Sort columns according to keyword
-        sorted_cols = [col for _, col in sorted(zip(self.keyword, columns))]
-        return ''.join(sorted_cols)
-        
-    def decrypt(self, text):
-        # Reverse columnar transposition
-        col_length = len(text) // len(self.keyword)
-        remainder = len(text) % len(self.keyword)
-        
-        columns = [''] * len(self.keyword)
-        pos = 0
-        
-        # Reconstruct columns
-        sorted_indices = [i for i, _ in sorted(enumerate(self.keyword), key=lambda x: x[1])]
-        for idx in sorted_indices:
-            length = col_length + (1 if idx < remainder else 0)
-            columns[idx] = text[pos:pos + length]
-            pos += length
-            
-        # Read off original text
-        intermediate = ''
-        for i in range(max(len(c) for c in columns)):
-            for j in range(len(columns)):
-                if i < len(columns[j]):
-                    intermediate += columns[j][i]
-                    
-        # Reverse substitution
-        result = ''
-        for i in range(0, len(intermediate), 2):
-            if i + 1 < len(intermediate):
-                row = self.chars.index(intermediate[i])
-                col = self.chars.index(intermediate[i + 1])
-                result += self.get_char(row, col)
-                
-        return result
+from secretpy import ADFGVX, CryptMachine, alphabets as al
 
 def normalize_char(c):
     """Normalize a single character, converting accented characters to their base form"""
-    # Decompose the character into its base form and combining marks
     normalized = unicodedata.normalize('NFKD', c)
-    # Keep only the base character (remove combining marks)
     base_char = ''.join(c for c in normalized if not unicodedata.combining(c))
     return base_char
 
@@ -82,19 +15,11 @@ def normalise_text(text):
     """Normalize text, handling accented characters properly"""
     result = ''
     for c in text:
-        # First normalize any accented characters
         norm_c = normalize_char(c)
-        # Then keep only alphanumeric characters and convert to uppercase
         for base_c in norm_c:
-            if base_c.isalnum():
-                result += base_c.upper()
+            if base_c.isalpha():  # Changed to only accept alphabetic characters
+                result += base_c.lower()  # Changed to lowercase to match SecretPy's default
     return result
-
-def generate_square(initialisation_vector):
-    """Generate the substitution square using the initialization vector"""
-    random.seed(initialisation_vector)
-    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-    return ''.join(random.sample(alphabet, len(alphabet)))
 
 def analyze_text_differences(text, label="Text"):
     """Analyze and print text characteristics"""
@@ -110,6 +35,14 @@ def analyze_text_differences(text, label="Text"):
     special_sample = [c for c in text[:1000] if not c.isalnum()][:10]
     print(f"Sample special chars: {special_sample}")
 
+def generate_polybius_square(init_vector):
+    """Generate a randomized polybius square using the initialization vector"""
+    random.seed(init_vector)
+    # Using lowercase letters and digits for the polybius square
+    chars = list("abcdefghijklmnopqrstuvwxyz")
+    random.shuffle(chars)
+    return "".join(chars)
+
 def main():
     # Check command line arguments
     if len(sys.argv) != 4:
@@ -118,15 +51,22 @@ def main():
 
     # Get command line arguments
     pdf_file = sys.argv[1]
-    initialisation_vector = sys.argv[2]
-    keyword = sys.argv[3]
-
-    # Initialize cipher
-    square = generate_square(initialisation_vector)
-    cipher = CustomADFGVX(square, keyword)
+    init_vector = sys.argv[2]
+    keyword = sys.argv[3].lower()  # Changed to lowercase to match SecretPy's default
 
     try:
         start_time = time.time()
+
+        # Initialize the cipher with the polybius square
+        cipher = ADFGVX()
+        cm = CryptMachine(cipher)
+        
+        # Set the keyword for columnar transposition
+        cm.set_key(keyword)
+        
+        # Generate and set the polybius square
+        polybius_square = generate_polybius_square(init_vector)
+        cm.set_alphabet(polybius_square)
 
         # Read PDF file
         reader = PdfReader(pdf_file)
@@ -143,10 +83,17 @@ def main():
         normalised_text = normalise_text(extracted_text)
         analyze_text_differences(normalised_text, "Normalized Text")
 
-        encrypted_text = cipher.encrypt(normalised_text)
+        print("\nPolybius Square being used:")
+        print(polybius_square)
+        print("\nKeyword being used:")
+        print(keyword)
+
+        # Encrypt using SecretPy's ADFGVX
+        encrypted_text = cm.encrypt(normalised_text)
         analyze_text_differences(encrypted_text, "Encrypted Text")
 
-        decrypted_text = cipher.decrypt(encrypted_text)
+        # Decrypt using SecretPy's ADFGVX
+        decrypted_text = cm.decrypt(encrypted_text)
         analyze_text_differences(decrypted_text, "Decrypted Text")
 
         # Compare results
