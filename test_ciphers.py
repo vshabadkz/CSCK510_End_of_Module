@@ -6,9 +6,11 @@ import os
 import random
 import string
 from math import sqrt, ceil
+from tqdm import tqdm
+from concurrent.futures import ProcessPoolExecutor
 
 # Parameters
-NUM_ITERATIONS = 100  # Number of iterations for time measurement
+NUM_ITERATIONS = 10  # Reduced number of iterations for faster execution
 NUM_CORES = os.cpu_count()  # Dynamically retrieve the number of cores
 
 # Results storage
@@ -97,62 +99,73 @@ def rail_fence_decrypt(ciphertext, key_length):
             direction *= -1
     return ''.join(plaintext)
 
-def adfgvx_encrypt(text, key_length, substitution_map):
-    """Perform ADFGVX Encryption with substitution and transposition."""
+def adfgvx_encrypt_wrapped(text, key_length, substitution_map):
+    """Wrapper for ADFGVX encryption to make it picklable."""
     substituted_text = ''.join(substitution_map.get(char, char) for char in text)
     ciphertext = columnar_encrypt(substituted_text, key_length)
-    return ciphertext, ceil(sqrt(len(substituted_text)))  # Return ciphertext and square dimension size
+    return ciphertext, ceil(sqrt(len(substituted_text)))
 
-def adfgvx_decrypt(ciphertext, key_length, substitution_map):
-    """Perform ADFGVX Decryption with reverse transposition and substitution."""
+def adfgvx_decrypt_wrapped(ciphertext, key_length, substitution_map):
+    """Wrapper for ADFGVX decryption to make it picklable."""
     reverse_map = reverse_substitution_map(substitution_map)
     substituted_text = columnar_decrypt(ciphertext, key_length)
     plaintext = ''.join(reverse_map.get(substituted_text[i:i+2], '') for i in range(0, len(substituted_text), 2))
     return plaintext
 
-# Main Analysis
+# Analysis Function
+def process_cipher_analysis(args):
+    """Process a single cipher analysis task."""
+    cipher_name, encrypt_fn, decrypt_fn, text_length, key_length, substitution_map = args
+    text = generate_random_text(text_length)
+    if cipher_name == "ADFGVX":
+        ciphertext, square_dim = encrypt_fn(text, key_length, substitution_map)
+    else:
+        ciphertext = encrypt_fn(text, key_length)
+        square_dim = None
+    encrypt_time = time_execution(encrypt_fn, text, key_length, substitution_map) if cipher_name == "ADFGVX" else time_execution(encrypt_fn, text, key_length)
+    decrypt_time = time_execution(decrypt_fn, ciphertext, key_length, substitution_map) if cipher_name == "ADFGVX" else time_execution(decrypt_fn, ciphertext, key_length)
+    return [
+        {
+            "Cipher": cipher_name,
+            "Text Length": text_length,
+            "Key Length": key_length,
+            "Square Dimension": square_dim,
+            "Phase": "Encryption",
+            "Time (ms)": encrypt_time,
+        },
+        {
+            "Cipher": cipher_name,
+            "Text Length": text_length,
+            "Key Length": key_length,
+            "Square Dimension": square_dim,
+            "Phase": "Decryption",
+            "Time (ms)": decrypt_time,
+        },
+    ]
+
 def analyse_ciphers(text_lengths, key_lengths):
-    """Analyse and compare the performance of all ciphers."""
+    """Analyse and compare the performance of all ciphers using parallel processing."""
     substitution_map = generate_substitution_map()
 
     ciphers = {
         "Columnar": (columnar_encrypt, columnar_decrypt),
         "Rail Fence": (rail_fence_encrypt, rail_fence_decrypt),
-        "ADFGVX": (lambda t, k: adfgvx_encrypt(t, k, substitution_map),
-                   lambda c, k: adfgvx_decrypt(c, k, substitution_map)),
+        "ADFGVX": (adfgvx_encrypt_wrapped, adfgvx_decrypt_wrapped),
     }
 
+    tasks = []
     for cipher_name, (encrypt_fn, decrypt_fn) in ciphers.items():
         for text_length in text_lengths:
-            text = generate_random_text(text_length)
             for key_length in key_lengths:
-                # Encryption
-                if cipher_name == "ADFGVX":
-                    ciphertext, square_dim = encrypt_fn(text, key_length)
-                else:
-                    ciphertext = encrypt_fn(text, key_length)
-                    square_dim = None
-                encrypt_time = time_execution(encrypt_fn, text, key_length)
-                # Decryption
-                decrypt_time = time_execution(decrypt_fn, ciphertext, key_length)
+                if key_length > text_length:
+                    continue  # Skip invalid cases
+                tasks.append((cipher_name, encrypt_fn, decrypt_fn, text_length, key_length, substitution_map))
 
-                # Record results
-                results.append({
-                    "Cipher": cipher_name,
-                    "Text Length": text_length,
-                    "Key Length": key_length,
-                    "Square Dimension": square_dim,
-                    "Phase": "Encryption",
-                    "Time (ms)": encrypt_time,
-                })
-                results.append({
-                    "Cipher": cipher_name,
-                    "Text Length": text_length,
-                    "Key Length": key_length,
-                    "Square Dimension": square_dim,
-                    "Phase": "Decryption",
-                    "Time (ms)": decrypt_time,
-                })
+    # Use parallel processing to run tasks
+    with ProcessPoolExecutor(max_workers=NUM_CORES) as executor:
+        for result_set in tqdm(executor.map(process_cipher_analysis, tasks), total=len(tasks)):
+            results.extend(result_set)
+
 
 # Visualisation
 def visualise_results(df):
@@ -168,15 +181,16 @@ def visualise_results(df):
 
     # Encryption/Decryption Time vs Text Length
     sns.lineplot(data=df, x="Text Length", y="Time (ms)", hue="Cipher", style="Phase", ax=axes[1])
-    axes[1].set_title("Time vs Text Length")
-    axes[1].set_xlabel("Text Length")
+    axes[1].set_xscale("log")  # Log scale for text length
+    axes[1].set_title("Time vs Log(Text Length)")
+    axes[1].set_xlabel("Text Length (Log Scale)")
     axes[1].set_ylabel("Time (ms)")
 
-    # ADFGVX: Time vs Square Dimension
+    # ADFGVX: Time vs Side Length of a Square
     adfgvx_df = df[df["Cipher"] == "ADFGVX"]
     sns.lineplot(data=adfgvx_df, x="Square Dimension", y="Time (ms)", hue="Phase", ax=axes[2])
-    axes[2].set_title("ADFGVX: Time vs Square Dimension")
-    axes[2].set_xlabel("Square Dimension")
+    axes[2].set_title("ADFGVX: Time vs Side Length of a Square")
+    axes[2].set_xlabel("Side Length of a Square")
     axes[2].set_ylabel("Time (ms)")
 
     fig.suptitle(f"Cipher Performance Analysis ({NUM_ITERATIONS} Iterations, {NUM_CORES} Cores)", fontsize=16)
@@ -187,10 +201,11 @@ def visualise_results(df):
 
 # Main Execution
 if __name__ == "__main__":
-    key_lengths = [2, 4, 6, 8, 10]
-    text_lengths = [1000, 5000, 10000]
+    key_lengths = [2, 4, 6, 8, 10, 20, 50]
+    text_lengths = [100, 500, 1000, 5000, 10000, 50000, 100000]
 
     # Analyse and Visualise
     analyse_ciphers(text_lengths, key_lengths)
     df = pd.DataFrame(results)
+    df.to_csv("cipher_performance_results.csv", index=False)  # Save results for offline analysis
     visualise_results(df)
