@@ -1,0 +1,61 @@
+
+==================== Stage 1: Encryption - ADFGVX ====================
+Performing 10 encryption runs...
+Average encryption time: 40.13ms
+Standard deviation: 1.39ms
+
+==================== Stage 2: Decryption - ADFGVX ====================
+Performing 10 decryption runs...
+Average decryption time: 108.38ms
+Standard deviation: 1.73ms
+
+==================== Stage 3: Cryptanalysis - ADFGVX ====================
+Performing 10 cryptanalysis runs using frequency analysis...
+Sample found key parameters: None
+Average cryptanalysis time: 151.09ms
+Standard deviation: 2.73ms
+
+==================== Stage 1: Encryption - Columnar ====================
+Performing 10 encryption runs...
+Average encryption time: 13.73ms
+Standard deviation: 0.23ms
+
+==================== Stage 2: Decryption - Columnar ====================
+Performing 10 decryption runs...
+Average decryption time: 24.73ms
+Standard deviation: 0.94ms
+
+==================== Stage 3: Cryptanalysis - Columnar ====================
+Performing 10 cryptanalysis runs using frequency analysis...
+Sample found key: ab
+Average cryptanalysis time: 15.16ms
+Standard deviation: 0.13ms
+
+==================== Stage 1: Encryption - Railfence ====================
+Performing 10 encryption runs...
+Average encryption time: 18.76ms
+Standard deviation: 0.20ms
+
+==================== Stage 2: Decryption - Railfence ====================
+Performing 10 decryption runs...
+Average decryption time: 35.44ms
+Standard deviation: 0.97ms
+
+==================== Stage 3: Cryptanalysis - Railfence ====================
+Performing 10 cryptanalysis runs using frequency analysis...
+Sample found rails: 2
+Average cryptanalysis time: 1.28ms
+Standard deviation: 0.04ms
+
+==================== Stage 4: Comparison Analysis ====================
+
+Visualization saved as 'cipher_comparison.png' (10 runs per cipher)
+
+Statistical Summary:
++-----------+---------------------+----------------+---------------------+----------------+---------------------------+----------------------+
+|  Cipher   | Encrypt Median (ms) | Encrypt StdDev | Decrypt Median (ms) | Decrypt StdDev | Cryptanalysis Median (ms) | Cryptanalysis StdDev |
++-----------+---------------------+----------------+---------------------+----------------+---------------------------+----------------------+
+|  ADFGVX   |        39.70        |      1.39      |       108.73        |      1.73      |          150.26           |         2.73         |
+| Columnar  |        13.74        |      0.23      |        24.49        |      0.94      |           15.11           |         0.13         |
+| Railfence |        18.71        |      0.20      |        34.93        |      0.97      |           1.28            |         0.04         |
++-----------+---------------------+----------------+---------------------+----------------+---------------------------+----------------------+

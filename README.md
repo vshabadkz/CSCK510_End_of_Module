@@ -7,5 +7,4 @@ pip install PyPDF2 secretpy pandas seaborn tabulate
 
 ## To run:
 
-python3 encrypt-decrypt.py _The\ Adventures\ of\ Tom\ Sawyer\ \(full\).pdf U
-niversity ofLiverpool
+python3 encrypt-decrypt.py _The\ Adventures\ of\ Tom\ Sawyer\ \(full\).pdf Univ Lvrpl 30
