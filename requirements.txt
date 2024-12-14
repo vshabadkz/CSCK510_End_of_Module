@@ -1,8 +1,0 @@
-secretpy
-PyPDF2
-pandas
-seaborn
-matplotlib
-tabulate
-tqdm
-deap
