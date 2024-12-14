@@ -3,7 +3,7 @@
 
 ## Preprequisites:
 
-pip install PyPDF2 secretpy
+pip install PyPDF2 secretpy pandas seaborn tabulate
 
 ## To run:
 

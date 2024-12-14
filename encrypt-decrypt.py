@@ -2,6 +2,9 @@ import sys
 import time
 import unicodedata
 import random
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
 from PyPDF2 import PdfReader
 from secretpy import (
     ADFGVX, 
@@ -10,34 +13,17 @@ from secretpy import (
     CryptMachine
 )
 from statistics import mean, stdev
+from tabulate import tabulate
 
-def normalize_char(c):
-    """Normalize a single character, converting accented characters to their base form"""
-    normalized = unicodedata.normalize('NFKD', c)
-    base_char = ''.join(c for c in normalized if not unicodedata.combining(c))
-    return base_char
-
-def normalise_text(text):
+def normalize_text(text):
     """Normalize text, handling accented characters properly"""
     result = ''
     for c in text:
-        norm_c = normalize_char(c)
-        for base_c in norm_c:
-            if base_c.isalpha():
+        normalized = unicodedata.normalize('NFKD', c)
+        for base_c in normalized:
+            if not unicodedata.combining(base_c) and base_c.isalpha():
                 result += base_c.lower()
     return result
-
-def analyze_text_differences(text, label="Text"):
-    """Analyze and print text characteristics"""
-    total_chars = len(text)
-    alpha_chars = sum(c.isalnum() for c in text)
-    special_chars = total_chars - alpha_chars
-    
-    print(f"\n=== Analysis of {label} ===")
-    print(f"Total characters: {total_chars}")
-    print(f"Alphanumeric characters: {alpha_chars}")
-    print(f"Special characters: {special_chars}")
-    print(f"First 50 characters: {text[:50]}")
 
 def generate_polybius_square(init_vector):
     """Generate a randomized polybius square using the initialization vector"""
@@ -48,46 +34,75 @@ def generate_polybius_square(init_vector):
 
 def measure_performance(cipher_name, cm, text, num_runs=30):
     """Measure encryption and decryption performance"""
-    encrypt_times = []
-    decrypt_times = []
-    encrypted_text = None
+    performance_data = []
     
-    for _ in range(num_runs):
+    print(f"\nTesting {cipher_name} cipher...")
+    for run in range(num_runs):
         # Measure encryption
         start_time = time.time()
         encrypted_text = cm.encrypt(text)
         encrypt_time = (time.time() - start_time) * 1000
-        encrypt_times.append(encrypt_time)
         
         # Measure decryption
         start_time = time.time()
         decrypted_text = cm.decrypt(encrypted_text)
         decrypt_time = (time.time() - start_time) * 1000
-        decrypt_times.append(decrypt_time)
         
         # Verify correctness
         if decrypted_text != text:
-            print(f"\nWarning: {cipher_name} decryption mismatch!")
+            print(f"Warning: {cipher_name} decryption mismatch in run {run + 1}!")
+        
+        performance_data.append({
+            'cipher': cipher_name,
+            'run': run + 1,
+            'encrypt_time': encrypt_time,
+            'decrypt_time': decrypt_time
+        })
     
-    return {
-        'name': cipher_name,
-        'encrypt_avg': mean(encrypt_times),
-        'encrypt_std': stdev(encrypt_times) if len(encrypt_times) > 1 else 0,
-        'decrypt_avg': mean(decrypt_times),
-        'decrypt_std': stdev(decrypt_times) if len(decrypt_times) > 1 else 0,
-        'encrypted_length': len(encrypted_text) if encrypted_text else 0
-    }
+    return performance_data
 
-def print_performance_results(results):
-    """Print performance comparison results"""
-    print("\n=== Performance Comparison ===")
-    print(f"{'Cipher':<20} {'Encryption (ms)':<25} {'Decryption (ms)':<25} {'Output Length':<15}")
-    print("-" * 85)
+def create_visualizations_and_stats(all_performance_data, num_runs):
+    """Create statistical visualizations and summary using seaborn"""
+    df = pd.DataFrame(all_performance_data)
     
-    for result in results:
-        encrypt_stats = f"{result['encrypt_avg']:.2f} ± {result['encrypt_std']:.2f}"
-        decrypt_stats = f"{result['decrypt_avg']:.2f} ± {result['decrypt_std']:.2f}"
-        print(f"{result['name']:<20} {encrypt_stats:<25} {decrypt_stats:<25} {result['encrypted_length']:<15}")
+    # Create visualization
+    plt.figure(figsize=(12, 5))
+    
+    # Encryption/Decryption comparison plot
+    plt.subplot(1, 2, 1)
+    sns.boxplot(x='cipher', y='encrypt_time', data=df)
+    plt.title('Encryption Time Distribution')
+    plt.ylabel('Time (ms)')
+    plt.xticks(rotation=30)
+    
+    plt.subplot(1, 2, 2)
+    sns.boxplot(x='cipher', y='decrypt_time', data=df)
+    plt.title('Decryption Time Distribution')
+    plt.ylabel('Time (ms)')
+    plt.xticks(rotation=30)
+    
+    plt.tight_layout()
+    plt.savefig('cipher_performance.png')
+    print(f"\nVisualization saved as 'cipher_performance.png' (based on {num_runs} runs)")
+
+    # Calculate statistics
+    stats = []
+    for cipher in df['cipher'].unique():
+        cipher_data = df[df['cipher'] == cipher]
+        stats.append({
+            'Cipher': cipher,
+            'Encryption Median (ms)': f"{cipher_data['encrypt_time'].median():.2f}",
+            'Encryption StdDev (ms)': f"{cipher_data['encrypt_time'].std():.2f}",
+            'Decryption Median (ms)': f"{cipher_data['decrypt_time'].median():.2f}",
+            'Decryption StdDev (ms)': f"{cipher_data['decrypt_time'].std():.2f}"
+        })
+    
+    # Print beautiful table
+    print("\n" + "="*100)
+    print(f"CIPHER PERFORMANCE COMPARISON ({num_runs} runs per cipher)")
+    print("="*100)
+    print(tabulate(stats, headers='keys', tablefmt='pretty', numalign='right'))
+    print("="*100)
 
 def main():
     if len(sys.argv) != 4:
@@ -97,38 +112,33 @@ def main():
     pdf_file = sys.argv[1]
     init_vector = sys.argv[2]
     keyword = sys.argv[3].lower()
+    num_runs = 30  # Number of test runs per cipher
 
     try:
         # Read and normalize input text
         reader = PdfReader(pdf_file)
-        extracted_text = ""
-        for page in reader.pages:
-            extracted_text += page.extract_text()
+        normalised_text = normalize_text(''.join(page.extract_text() for page in reader.pages))
 
-        analyze_text_differences(extracted_text, "Extracted Text")
-        normalised_text = normalise_text(extracted_text)
-        analyze_text_differences(normalised_text, "Normalized Text")
-
-        # Initialize ciphers with their required key types
+        # Initialize ciphers
         ciphers = [
             ('ADFGVX', ADFGVX(), generate_polybius_square(init_vector), keyword),
             ('Columnar', ColumnarTransposition(), None, keyword),
-            ('Railfence', Zigzag(), None, 3)  # Using fixed rail count of 3
+            ('Railfence', Zigzag(), None, 3)
         ]
 
-        # Measure performance for each cipher
-        results = []
+        # Measure performance
+        all_performance_data = []
         for name, cipher, alphabet, key in ciphers:
             cm = CryptMachine(cipher)
             cm.set_key(key)
             if alphabet:
                 cm.set_alphabet(alphabet)
             
-            result = measure_performance(name, cm, normalised_text)
-            results.append(result)
+            performance_data = measure_performance(name, cm, normalised_text, num_runs)
+            all_performance_data.extend(performance_data)
 
-        # Print performance comparison
-        print_performance_results(results)
+        # Create visualizations and print statistics
+        create_visualizations_and_stats(all_performance_data, num_runs)
 
     except Exception as e:
         print(f"An error occurred: {e}")
