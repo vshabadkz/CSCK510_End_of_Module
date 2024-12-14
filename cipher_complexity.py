@@ -1,9 +1,3 @@
-#!/usr/bin/env python3
-"""
-Cipher Complexity Analysis Tool
-Analyzes computational complexity of classical ciphers based on text and key lengths.
-"""
-
 import sys
 import time
 import random
@@ -12,12 +6,14 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 from secretpy import ADFGVX, ColumnarTransposition, Zigzag, CryptMachine
+from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
+import multiprocessing
 
 # Analysis parameters
 TEXT_LENGTHS = [1000, 5000, 10000, 50000, 100000]
-KEY_LENGTHS = [2, 4, 6, 8, 10]
-NUM_RUNS = 5
+KEY_LENGTHS = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]
+NUM_RUNS = 100
 
 class CipherTest:
     """Class to handle cipher configuration and testing."""
@@ -30,7 +26,7 @@ class CipherTest:
         """Create configured cipher machine."""
         key = self._generate_key(key_length)
         alphabet = self._generate_alphabet() if self.needs_alphabet else None
-        
+
         cm = CryptMachine(self.cipher_class())
         cm.set_key(key)
         if alphabet:
@@ -60,7 +56,7 @@ class ComplexityAnalyzer:
     def measure_time(self, cipher_test, text, key_length):
         """Measure encryption and decryption time."""
         cm = cipher_test.create_machine(key_length)
-        
+
         start = time.time()
         encrypted = cm.encrypt(text)
         encrypt_time = (time.time() - start) * 1000
@@ -68,13 +64,19 @@ class ComplexityAnalyzer:
         start = time.time()
         cm.decrypt(encrypted)
         decrypt_time = (time.time() - start) * 1000
-        
+
         return encrypt_time, decrypt_time
+
+    def parallel_measure(self, cipher_test, text, key_length, runs):
+        """Run multiple encryption/decryption measurements in parallel."""
+        with ThreadPoolExecutor() as executor:
+            results = list(executor.map(lambda _: self.measure_time(cipher_test, text, key_length), range(runs)))
+        return results
 
     def analyze(self):
         """Perform complexity analysis."""
         results = []
-        
+
         # Test text length impact
         print("\nAnalyzing text length impact...")
         for length in tqdm(TEXT_LENGTHS):
@@ -96,8 +98,8 @@ class ComplexityAnalyzer:
         text_slice = self.text[:10000]
         for length in tqdm(KEY_LENGTHS):
             for cipher in self.ciphers:
-                for _ in range(NUM_RUNS):
-                    enc_time, dec_time = self.measure_time(cipher, text_slice, length)
+                runs_results = self.parallel_measure(cipher, text_slice, length, NUM_RUNS)
+                for enc_time, dec_time in runs_results:
                     results.extend([
                         {'type': 'key', 'size': length, 'cipher': cipher.name, 
                          'operation': 'encryption', 'time': enc_time},
@@ -142,7 +144,8 @@ class ComplexityAnalyzer:
         axes[1,1].set_xlabel('Key Length')
         axes[1,1].set_ylabel('Time (ms)')
 
-        plt.suptitle('Cipher Complexity Analysis', y=1.02, size=16)
+        num_cores = multiprocessing.cpu_count()
+        plt.suptitle('Cipher Complexity Analysis ({} Runs, {} Cores)'.format(NUM_RUNS, num_cores), y=1.02, size=16)
         plt.tight_layout()
         plt.savefig('cipher_analysis.png', bbox_inches='tight', dpi=300)
         print("\nVisualization saved as 'cipher_analysis.png'")
@@ -152,10 +155,10 @@ def load_text(filepath):
     try:
         with open(filepath, 'r', encoding='utf-8') as file:
             text = ''.join(c.lower() for c in file.read() if c.isalpha())
-        print(f"Loaded text length: {len(text)} characters")
+        print("Loaded text length: {} characters".format(len(text)))
         return text
     except Exception as e:
-        print(f"Error loading file: {e}")
+        print("Error loading file: {}".format(e))
         sys.exit(1)
 
 def main():
