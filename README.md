@@ -3,8 +3,8 @@
 
 ## Preprequisites:
 
-pip install PyPDF2 secretpy pandas seaborn tabulate
+pip install PyPDF2 secretpy pandas seaborn tabulate tqdm
 
 ## To run:
 
-python3 encrypt-decrypt.py _The\ Adventures\ of\ Tom\ Sawyer\ \(full\).pdf Univ Lvrpl 30
+
