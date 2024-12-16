@@ -1,0 +1,11 @@
+myenvvsevolodshabad@Vsevolods-MacBook-Air CSCK510_End_of_Module % sudo nice -n -20 python3 comparison.py
+
+Using key: QWERTYUIOPASDFGHJKLZXCVBNM
+
+Ciphertext: ZIT JXOEA WKGVF YGB PXDHL GCTK ZIT SQMN RGU
+
+Exhaustive Search:
+Stopped due to time limit: 18000 seconds
+
+Best Key: KXVBUPOTHQRCSYLJIZAEGWDFMN, Score: 3.9503, Accuracy: 62.79%, Time: 18006.19s
+Total Keys Processed: 2680000000
